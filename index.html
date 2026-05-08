@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Objetivos 2026</title>
+    <title>Dashboard Operativo 2026</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100">
+<body>
     <div id="root"></div>
 
     <script type="text/babel">
@@ -19,18 +19,20 @@
             const [rawData, setRawData] = React.useState([]);
             const [loading, setLoading] = React.useState(true);
             const [mesSeleccionado, setMesSeleccionado] = React.useState(new Date().getMonth() + 1);
-            const [turno, setTurno] = React.useState('TODOS');
             const [diasHabiles, setDiasHabiles] = React.useState(22);
+            const [darkMode, setDarkMode] = React.useState(false);
+
+            const mesesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
             React.useEffect(() => {
                 fetch(CSV_URL)
                     .then(res => res.text())
                     .then(csv => {
-                        const rows = csv.split('\n').map(row => row.split(','));
-                        const headers = rows[0].map(h => h.trim());
+                        const rows = csv.split('\n').map(row => row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/));
+                        const headers = rows[0].map(h => h.trim().replace(/"/g, ''));
                         const jsonData = rows.slice(1).map(row => {
                             let obj = {};
-                            row.forEach((cell, i) => { obj[headers[i]] = cell?.trim(); });
+                            row.forEach((cell, i) => { obj[headers[i]] = cell?.trim().replace(/"/g, ''); });
                             return obj;
                         });
                         setRawData(jsonData);
@@ -41,104 +43,139 @@
             const calcularMetricas = (idVendedor) => {
                 const filtrado = rawData.filter(r => {
                     const matchVendedor = Number(r.Vendedor) === idVendedor;
-                    const fechaParts = r.Fecha ? r.Fecha.split('/') : [];
-                    const matchMes = fechaParts.length > 1 ? Number(fechaParts[1]) === Number(mesSeleccionado) : true;
-                    const matchTurno = turno === 'TODOS' ? true : String(r.Turno || '').toUpperCase() === turno;
-                    return matchVendedor && matchMes && matchTurno;
+                    // Filtro por columna "Mes" (puede venir como número o nombre)
+                    const valorMesCol = String(r.Mes || '').trim();
+                    const nombreMesActual = mesesNombres[mesSeleccionado - 1].toUpperCase();
+                    const matchMes = valorMesCol === String(mesSeleccionado) || valorMesCol.toUpperCase() === nombreMesActual;
+                    
+                    return matchVendedor && matchMes;
                 });
 
-                const sum = (arr, col) => arr.reduce((acc, r) => acc + (Number(r[col]) || 0), 0);
+                const parseNum = (val) => {
+                    if (!val) return 0;
+                    let clean = val.replace(/\./g, '').replace(',', '.');
+                    return parseFloat(clean) || 0;
+                };
+
+                const sum = (arr, col) => arr.reduce((acc, r) => acc + parseNum(r[col]), 0);
                 const incluye = (arr, col, txt) => arr.filter(r => String(r[col] || '').toUpperCase().includes(txt.toUpperCase()));
                 const rangoEs = (arr, txt) => arr.filter(r => String(r.RANGO || '').toUpperCase() === txt.toUpperCase());
 
-                const facturacion = sum(filtrado, 'ImporteML');
-                const nMostrador = sum(filtrado.filter(r => r['Llanta 17'] && ['SUB','VAN','H','SPIDER','T','V','W'].includes(String(r.RANGO).toUpperCase())), 'Cant');
-                const nOtras = sum(filtrado.filter(r => r['Llanta 17'] && String(r.RANGO).toUpperCase() === 'OTRAS MARCAS'), 'Cant');
+                // --- LÓGICA ---
+                const facturacion = sum(filtrado, 'Importe ML');
+                
+                const nMostrador = sum(filtrado.filter(r => r['Llanta 17'] && ['SUB','VAN','H','SPIDER','T','V','W'].includes(String(r.RANGO || '').toUpperCase())), 'Cant');
+                const nOtras = sum(filtrado.filter(r => r['Llanta 17'] && String(r.RANGO || '').toUpperCase() === 'OTRAS MARCAS'), 'Cant');
                 const totalNeu = nMostrador + nOtras;
-                const alineacion = sum(incluye(filtrado, 'Descripción', 'ALINEACION'), 'Cant');
-                const balanceo = sum(incluye(filtrado, 'Descripción', 'BALANCEO'), 'Cant');
+
+                const alineaciones = sum(incluye(filtrado, 'Descripción', 'ALINEACION'), 'Cant');
+                const balanceos = sum(incluye(filtrado, 'Descripción', 'BALANCEO'), 'Cant');
                 const valvulas = sum(incluye(filtrado, 'Descripción', 'VALVULA'), 'Cant');
-                const moFact = sum(incluye(filtrado, 'Descripción', 'MANO DE OBRA'), 'ImporteML');
+
+                const moFact = sum(incluye(filtrado, 'Descripción', 'MANO DE OBRA'), 'Importe ML');
                 const moCant = sum(incluye(filtrado, 'Descripción', 'MANO DE OBRA'), 'Cant');
-                const servFact = sum(rangoEs(filtrado, 'A_SERVICIO'), 'ImporteML');
+
+                const servFact = sum(rangoEs(filtrado, 'A_SERVICIO'), 'Importe ML');
                 const servCant = sum(rangoEs(filtrado, 'A_SERVICIO'), 'Cant');
+
                 const repChapa = sum(rangoEs(filtrado, 'REP CHAPA'), 'Cant');
                 const repAle = sum(rangoEs(filtrado, 'REP ALE'), 'Cant');
-                const accFact = sum(rangoEs(filtrado, 'ACCESORIOS'), 'ImporteML');
+                const totalLlantas = repChapa + repAle;
+
+                const accFact = sum(rangoEs(filtrado, 'ACCESORIOS'), 'Importe ML');
                 const accCant = sum(rangoEs(filtrado, 'ACCESORIOS'), 'Cant');
 
                 return {
                     "Facturación Total": facturacion,
+                    "Neumáticos Mostrador": nMostrador,
+                    "Neumáticos Otras": nOtras,
                     "Total Neumáticos": totalNeu,
-                    "Alineaciones": alineacion,
-                    "Balanceos": balanceo,
-                    "Total Llantas": repChapa + repAle,
+                    "Alineaciones": alineaciones,
+                    "Balanceos": balanceos,
+                    "Válvulas": valvulas,
+                    "Mano de Obra Fact": moFact,
+                    "Mano de Obra Cant": moCant,
+                    "Servicio Fact": servFact,
+                    "Servicio Cant": servCant,
+                    "Rep. Chapa": repChapa,
+                    "Rep. Aleación": repAle,
+                    "Total Llantas": totalLlantas,
+                    "Accesorios Fact": accFact,
+                    "Accesorios Cant": accCant,
+                    "Matafuegos": sum(incluye(filtrado, 'Descripción', 'Matafuego'), 'Cant'),
+                    "Antirrobos": sum(incluye(filtrado, 'Descripción', 'Antirrobo'), 'Cant'),
+                    "Escobillas": sum(incluye(filtrado, 'Descripción', 'Escobilla'), 'Cant'),
+                    "Baterías": sum(filtrado.filter(r => {
+                        const d = String(r.Descripción || '').toUpperCase();
+                        return d.includes('BATERÍA') || d.includes('BAT');
+                    }), 'Cant'),
                     "M.O. Ticket": moCant > 0 ? moFact / moCant : 0,
-                    "Servicio Ticket": servCant > 0 ? servFact / servCant : 0,
-                    "Fact. Diaria": diasHabiles > 0 ? facturacion / diasHabiles : 0,
-                    "% Valvulas/Neu": totalNeu > 0 ? (valvulas / totalNeu) : 0,
-                    "Baterías": sum(filtrado.filter(r => String(r.Descripción || '').toUpperCase().includes('BAT')), 'Cant'),
-                    "Matafuegos": sum(incluye(filtrado, 'Descripción', 'Matafuego'), 'Cant')
+                    "Servicio Ticket Medio": servCant > 0 ? servFact / servCant : 0,
+                    "Accesorios Ticket Medio": accCant > 0 ? accFact / accCant : 0,
+                    "% Servicio/Fact": facturacion > 0 ? servFact / facturacion : 0,
+                    "% Accesorios/Fact": facturacion > 0 ? accFact / facturacion : 0,
+                    "% Valvulas/Neu": totalNeu > 0 ? valvulas / totalNeu : 0,
+                    "% MO/Alineaciones": alineaciones > 0 ? moCant / alineaciones : 0,
+                    "% Recambios/Balanceos": balanceos > 0 ? totalLlantas / balanceos : 0,
+                    "Facturación Diaria": diasHabiles > 0 ? facturacion / diasHabiles : 0
                 };
             };
 
-            if (loading) return <div class="flex justify-center items-center h-screen font-sans">Conectando con base de datos de Google Sheets...</div>;
+            if (loading) return <div className={`h-screen flex justify-center items-center ${darkMode ? 'bg-slate-900 text-white' : 'bg-gray-100 text-gray-800'}`}>Cargando datos desde la columna "Mes"...</div>;
 
             const dataBeccar = calcularMetricas(88);
             const dataSanMartin = calcularMetricas(99);
 
             return (
-                <div class="p-6 max-w-6xl mx-auto font-sans">
-                    <h1 class="text-3xl font-bold text-center mb-8 text-slate-800 uppercase tracking-wider">Dashboard Operativo 2026</h1>
-                    
-                    <div class="bg-white p-6 rounded-xl shadow-md mb-8 flex flex-wrap gap-6 items-center justify-center border-l-4 border-blue-500">
-                        <div class="flex flex-col">
-                            <label class="text-xs font-bold text-gray-500 uppercase">Mes</label>
-                            <select class="border p-2 rounded-lg bg-gray-50 font-medium" value={mesSeleccionado} onChange={e => setMesSeleccionado(e.target.value)}>
-                                {['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((m, i) => (
-                                    <option key={m} value={i+1}>{m}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div class="flex flex-col">
-                            <label class="text-xs font-bold text-gray-500 uppercase">Turno</label>
-                            <select class="border p-2 rounded-lg bg-gray-50 font-medium" value={turno} onChange={e => setTurno(e.target.value)}>
-                                <option value="TODOS">Todos</option>
-                                <option value="DIA">Día</option>
-                                <option value="NOCHE">Noche</option>
-                            </select>
-                        </div>
-                        <div class="flex flex-col">
-                            <label class="text-xs font-bold text-gray-500 uppercase">Días Hábiles</label>
-                            <input class="border p-2 rounded-lg bg-gray-50 w-24 font-bold text-center" type="number" value={diasHabiles} onChange={e => setHabiles(e.target.value)} />
-                        </div>
-                    </div>
+                <div className={`min-h-screen p-4 transition-colors duration-300 ${darkMode ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+                    <div className="max-w-7xl mx-auto">
+                        <header className="flex justify-between items-center mb-8 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+                            <h1 className="text-2xl font-black tracking-tight">OPERATIVO 2026</h1>
+                            <div className="flex items-center gap-4">
+                                <div className="flex flex-col">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Filtro Mes</label>
+                                    <select className="bg-transparent font-bold text-lg outline-none text-blue-600" value={mesSeleccionado} onChange={e => setMesSeleccionado(Number(e.target.value))}>
+                                        {mesesNombres.map((m, i) => (
+                                            <option key={m} value={i+1} className="text-black">{m}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex flex-col ml-4">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Días Hábiles</label>
+                                    <input type="number" className="bg-transparent font-bold text-lg w-12 outline-none text-blue-600" value={diasHabiles} onChange={e => setDiasHabiles(Number(e.target.value))} />
+                                </div>
+                                <button onClick={() => setDarkMode(!darkMode)} className="ml-6 px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-bold shadow-sm">
+                                    {darkMode ? '☀️ Modo Día' : '🌙 Modo Noche'}
+                                </button>
+                            </div>
+                        </header>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <SucursalCard titulo="BECCAR (88)" datos={dataBeccar} color="blue" />
-                        <SucursalCard titulo="SAN MARTÍN (99)" datos={dataSanMartin} color="green" />
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <SucursalCard titulo="BECCAR (88)" datos={dataBeccar} color="blue" isDark={darkMode} />
+                            <SucursalCard titulo="SAN MARTÍN (99)" datos={dataSanMartin} color="green" isDark={darkMode} />
+                        </div>
                     </div>
                 </div>
             );
         }
 
-        const SucursalCard = ({ titulo, datos, color }) => {
-            const colorClass = color === 'blue' ? 'border-blue-600' : 'border-green-600';
-            const textClass = color === 'blue' ? 'text-blue-700' : 'text-green-700';
-            
+        const SucursalCard = ({ titulo, datos, color, isDark }) => {
+            const accentColor = color === 'blue' ? 'border-blue-500' : 'border-emerald-500';
+            const titleColor = color === 'blue' ? 'text-blue-600' : 'text-emerald-600';
+
             return (
-                <div class={`bg-white rounded-2xl shadow-xl overflow-hidden border-t-8 ${colorClass}`}>
-                    <div class="bg-gray-50 px-6 py-4 border-b">
-                        <h2 class={`text-xl font-black ${textClass}`}>{titulo}</h2>
+                <div className={`${isDark ? 'bg-slate-800 border-slate-700 shadow-none' : 'bg-white border-slate-100 shadow-xl'} rounded-3xl overflow-hidden border-t-8 ${accentColor}`}>
+                    <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-700">
+                        <h2 className={`text-2xl font-black ${titleColor}`}>{titulo}</h2>
                     </div>
-                    <div class="p-6 grid grid-cols-2 gap-y-4 gap-x-6">
+                    <div className="p-8 grid grid-cols-2 gap-x-12 gap-y-4">
                         {Object.entries(datos).map(([label, val]) => (
-                            <div key={label} class="border-b border-gray-100 pb-2">
-                                <span class="text-[10px] text-gray-400 font-bold uppercase block leading-tight">{label}</span>
-                                <span class="text-lg font-bold text-slate-700">
+                            <div key={label} className="border-b border-slate-50 dark:border-slate-700 pb-2">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest">{label}</span>
+                                <span className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>
                                     {label.includes('Fact') || label.includes('Ticket') || label.includes('Diaria') 
-                                        ? `$${Math.round(val).toLocaleString()}` 
-                                        : label.includes('%') ? `${(val * 100).toFixed(1)}%` : val}
+                                        ? `$${Math.round(val).toLocaleString('es-AR')}` 
+                                        : label.includes('%') ? `${(val * 100).toFixed(1)}%` : Math.round(val)}
                                 </span>
                             </div>
                         ))}
