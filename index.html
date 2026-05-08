@@ -21,6 +21,7 @@
             const [mesSeleccionado, setMesSeleccionado] = React.useState(new Date().getMonth() + 1);
             const [diasHabiles, setDiasHabiles] = React.useState(22);
             const [darkMode, setDarkMode] = React.useState(false);
+            const [activeTab, setActiveTab] = React.useState('general');
 
             const mesesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -45,131 +46,118 @@
                     const matchVendedor = Number(r.Vendedor) === idVendedor;
                     const valorMesCol = String(r.Mes || '').trim();
                     const nombreMesActual = mesesNombres[mesSeleccionado - 1].toUpperCase();
-                    const matchMes = valorMesCol === String(mesSeleccionado) || valorMesCol.toUpperCase() === nombreMesActual;
-                    return matchVendedor && matchMes;
+                    return matchVendedor && (valorMesCol === String(mesSeleccionado) || valorMesCol.toUpperCase() === nombreMesActual);
                 });
 
                 const parseNum = (val) => {
                     if (!val || val === "") return 0;
-                    // Limpia símbolos de moneda, puntos de miles y cambia coma por punto decimal
                     let clean = val.replace(/[$\s]/g, '').replace(/\./g, '').replace(',', '.');
                     return parseFloat(clean) || 0;
                 };
 
                 const sum = (arr, col) => arr.reduce((acc, r) => acc + parseNum(r[col]), 0);
                 const incluye = (arr, col, txt) => arr.filter(r => String(r[col] || '').toUpperCase().includes(txt.toUpperCase()));
-                const rangoEs = (arr, txt) => arr.filter(r => String(r.RANGO || '').toUpperCase() === txt.toUpperCase());
+                const rangoEs = (arr, col, txt) => arr.filter(r => String(r[col] || '').toUpperCase() === txt.toUpperCase());
 
-                // --- CÁLCULOS ---
-                const facturacionTotal = sum(filtrado, 'Importe ML');
-                
-                const nMostrador = sum(filtrado.filter(r => r['Llanta 17'] && ['SUB','VAN','H','SPIDER','T','V','W'].includes(String(r.RANGO || '').toUpperCase())), 'Cant');
-                const nOtras = sum(filtrado.filter(r => r['Llanta 17'] && String(r.RANGO || '').toUpperCase() === 'OTRAS MARCAS'), 'Cant');
-                const totalNeu = nMostrador + nOtras;
-
+                // --- DATA ---
+                const factTotal = sum(filtrado, 'Importe ML');
                 const alineaciones = sum(incluye(filtrado, 'Descripción', 'ALINEACION'), 'Cant');
                 const balanceos = sum(incluye(filtrado, 'Descripción', 'BALANCEO'), 'Cant');
                 const valvulas = sum(incluye(filtrado, 'Descripción', 'VALVULA'), 'Cant');
+                
+                const nMostrador = sum(filtrado.filter(r => r['Llanta 17'] && ['SUB','VAN','H','SPIDER','T','V','W'].includes(String(r.RANGO || '').toUpperCase())), 'Cant');
+                const nOtras = sum(filtrado.filter(r => r['Llanta 17'] && String(r.RANGO || '').toUpperCase() === 'OTRAS MARCAS'), 'Cant');
+                
+                // Neumáticos Secciones
+                const factPirelli = sum(rangoEs(filtrado, 'Marca', 'PIRELLI'), 'Importe ML');
+                const factOtrasMarcas = sum(rangoEs(filtrado, 'RANGO', 'OTRAS MARCAS'), 'Importe ML');
+                const factNeumaticos = factPirelli + factOtrasMarcas;
+                const totalCantNeu = nMostrador + nOtras;
 
                 const moFact = sum(incluye(filtrado, 'Descripción', 'MANO DE OBRA'), 'Importe ML');
                 const moCant = sum(incluye(filtrado, 'Descripción', 'MANO DE OBRA'), 'Cant');
+                const servFact = sum(rangoEs(filtrado, 'RANGO', 'A_SERVICIO'), 'Importe ML');
+                const servCant = sum(rangoEs(filtrado, 'RANGO', 'A_SERVICIO'), 'Cant');
 
-                const servFact = sum(rangoEs(filtrado, 'A_SERVICIO'), 'Importe ML');
-                const servCant = sum(rangoEs(filtrado, 'A_SERVICIO'), 'Cant');
-
-                const repChapa = sum(rangoEs(filtrado, 'REP CHAPA'), 'Cant');
-                const repAle = sum(rangoEs(filtrado, 'REP ALE'), 'Cant');
-                const totalLlantas = repChapa + repAle;
-
-                const accFact = sum(rangoEs(filtrado, 'ACCESORIOS'), 'Importe ML');
-                const accCant = sum(rangoEs(filtrado, 'ACCESORIOS'), 'Cant');
+                const totalLlantas = sum(rangoEs(filtrado, 'RANGO', 'REP CHAPA'), 'Cant') + sum(rangoEs(filtrado, 'RANGO', 'REP ALE'), 'Cant');
 
                 return {
-                    "Facturación Total": facturacionTotal,
-                    "Total Neumáticos": totalNeu,
-                    "Alineaciones": alineaciones,
-                    "Balanceos": balanceos,
-                    "Total Llantas": totalLlantas,
-                    "M.O. Ticket": moCant > 0 ? moFact / moCant : 0,
-                    "Servicio Ticket Medio": servCant > 0 ? servFact / servCant : 0,
-                    "Accesorios Ticket Medio": accCant > 0 ? accFact / accCant : 0,
-                    "% Servicio/Fact": facturacionTotal > 0 ? (servFact / facturacionTotal) : 0,
-                    "% Accesorios/Fact": facturacionTotal > 0 ? (accFact / facturacionTotal) : 0,
-                    "% Valvulas/Neu": totalNeu > 0 ? (valvulas / totalNeu) : 0,
-                    "% MO/Alineaciones": alineaciones > 0 ? (moCant / alineaciones) : 0,
-                    "% Recambios/Balanceos": balanceos > 0 ? (totalLlantas / balanceos) : 0,
-                    "Facturación Diaria": diasHabiles > 0 ? facturacionTotal / diasHabiles : 0,
-                    "Baterías": sum(filtrado.filter(r => String(r.Descripción || '').toUpperCase().includes('BAT')), 'Cant'),
-                    "Matafuegos": sum(incluye(filtrado, 'Descripción', 'Matafuego'), 'Cant')
+                    general: {
+                        "Facturación Total": factTotal,
+                        "Facturación Diaria": diasHabiles > 0 ? factTotal / diasHabiles : 0,
+                        "Alineaciones": alineaciones,
+                        "Balanceos": balanceos,
+                        "Válvulas (Cant)": valvulas,
+                        "Total Llantas": totalLlantas,
+                        "M.O. Ticket Medio": moCant > 0 ? moFact / moCant : 0,
+                        "Servicio Ticket Medio": servCant > 0 ? servFact / servCant : 0,
+                        "% Servicio/Fact": factTotal > 0 ? servFact / factTotal : 0,
+                        "% Valvulas/Neu": totalCantNeu > 0 ? valvulas / totalCantNeu : 0,
+                    },
+                    neumaticos: {
+                        "Facturación Pirelli": factPirelli,
+                        "Facturación Otras": factOtrasMarcas,
+                        "Facturación Neumáticos": factNeumaticos,
+                        "Cant. Mostrador": nMostrador,
+                        "Cant. Otras": nOtras,
+                        "Total Neumáticos": totalCantNeu,
+                        "Neumáticos Ticket Medio": totalCantNeu > 0 ? factNeumaticos / totalCantNeu : 0,
+                        "Baterías": sum(incluye(filtrado, 'Descripción', 'BAT'), 'Cant'),
+                        "Matafuegos": sum(incluye(filtrado, 'Descripción', 'Matafuego'), 'Cant')
+                    }
                 };
             };
 
-            if (loading) return <div className={`h-screen flex justify-center items-center font-bold ${darkMode ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-800'}`}>Sincronizando datos...</div>;
+            if (loading) return <div className="h-screen flex justify-center items-center font-bold bg-slate-900 text-white">Cargando Solapas...</div>;
 
-            const dataBeccar = calcularMetricas(88);
-            const dataSanMartin = calcularMetricas(99);
+            const res88 = calcularMetricas(88);
+            const res99 = calcularMetricas(99);
 
             return (
-                <div className={`min-h-screen p-4 transition-colors duration-300 ${darkMode ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-                    <div className="max-w-7xl mx-auto">
-                        
-                        <header className={`flex flex-wrap justify-between items-center mb-8 p-6 rounded-3xl shadow-sm border transition-colors ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-                            <h1 className={`text-2xl font-black tracking-tighter ${darkMode ? 'text-white' : 'text-slate-800'}`}>OPERATIVO 2026</h1>
-                            
-                            <div className="flex items-center gap-6">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mes de consulta</span>
-                                    <select className={`bg-transparent font-bold text-lg outline-none cursor-pointer ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} value={mesSeleccionado} onChange={e => setMesSeleccionado(Number(e.target.value))}>
-                                        {mesesNombres.map((m, i) => (
-                                            <option key={m} value={i+1} className="text-black">{m}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Días Hábiles</span>
-                                    <input type="number" className={`bg-transparent font-bold text-lg w-16 outline-none ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} value={diasHabiles} onChange={e => setDiasHabiles(Number(e.target.value))} />
-                                </div>
-
-                                <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${darkMode ? 'bg-slate-700 text-yellow-400 border border-slate-600' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                                    {darkMode ? '☀️ Modo Día' : '🌙 Modo Noche'}
-                                </button>
+                <div className={`min-h-screen p-4 transition-colors ${darkMode ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+                    <div className="max-w-6xl mx-auto">
+                        <header className={`flex flex-wrap justify-between items-center mb-6 p-6 rounded-3xl shadow-sm border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                            <h1 className="text-xl font-black tracking-tighter">OBJETIVOS 2026</h1>
+                            <div className="flex items-center gap-4">
+                                <select className="bg-transparent font-bold text-blue-500 outline-none" value={mesSeleccionado} onChange={e => setMesSeleccionado(Number(e.target.value))}>
+                                    {mesesNombres.map((m, i) => <option key={m} value={i+1} className="text-black">{m}</option>)}
+                                </select>
+                                <input type="number" className="bg-transparent font-bold w-12 text-blue-500 outline-none" value={diasHabiles} onChange={e => setDiasHabiles(Number(e.target.value))} />
+                                <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-lg leading-none">{darkMode ? '☀️' : '🌙'}</button>
                             </div>
                         </header>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            <SucursalCard titulo="BECCAR (88)" datos={dataBeccar} color="blue" isDark={darkMode} />
-                            <SucursalCard titulo="SAN MARTÍN (99)" datos={dataSanMartin} color="green" isDark={darkMode} />
+                        <div className="flex gap-2 mb-6 bg-slate-200 dark:bg-slate-800 p-1 rounded-xl w-fit mx-auto">
+                            <button onClick={() => setActiveTab('general')} className={`px-6 py-2 rounded-lg font-bold transition-all ${activeTab === 'general' ? 'bg-white dark:bg-slate-700 shadow-md' : 'opacity-50'}`}>GESTIÓN GENERAL</button>
+                            <button onClick={() => setActiveTab('neumaticos')} className={`px-6 py-2 rounded-lg font-bold transition-all ${activeTab === 'neumaticos' ? 'bg-white dark:bg-slate-700 shadow-md' : 'opacity-50'}`}>NEUMÁTICOS</button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <SucursalCard titulo="BECCAR" datos={res88[activeTab]} color="blue" isDark={darkMode} />
+                            <SucursalCard titulo="SAN MARTÍN" datos={res99[activeTab]} color="emerald" isDark={darkMode} />
                         </div>
                     </div>
                 </div>
             );
         }
 
-        const SucursalCard = ({ titulo, datos, color, isDark }) => {
-            const accent = color === 'blue' ? 'border-blue-500' : 'border-emerald-500';
-            const titleColor = color === 'blue' ? 'text-blue-500' : 'text-emerald-500';
-
-            return (
-                <div className={`rounded-[2rem] overflow-hidden border-t-[12px] shadow-2xl transition-all ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
-                    <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-700">
-                        <h2 className={`text-2xl font-black ${titleColor}`}>{titulo}</h2>
-                    </div>
-                    <div className="p-8 grid grid-cols-2 gap-x-10 gap-y-6">
-                        {Object.entries(datos).map(([label, val]) => (
-                            <div key={label} className="border-b border-slate-50 dark:border-slate-700 pb-2">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1 tracking-tighter">{label}</span>
-                                <span className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>
-                                    {label.includes('Fact') || label.includes('Ticket') || label.includes('Diaria') 
-                                        ? `$${Math.round(val).toLocaleString('es-AR')}` 
-                                        : label.includes('%') ? `${(val * 100).toFixed(1)}%` : Math.round(val)}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
+        const SucursalCard = ({ titulo, datos, color, isDark }) => (
+            <div className={`rounded-[2rem] border-t-[8px] shadow-xl p-8 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-'+color+'-500'}`}>
+                <h2 className={`text-xl font-black mb-6 text-${color}-500`}>{titulo}</h2>
+                <div className="grid grid-cols-2 gap-6">
+                    {Object.entries(datos).map(([label, val]) => (
+                        <div key={label} className="border-b border-slate-100 dark:border-slate-700 pb-2">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-tighter">{label}</span>
+                            <span className="text-lg font-bold">
+                                {label.includes('Fact') || label.includes('Ticket') || label.includes('Diaria') 
+                                    ? `$${Math.round(val).toLocaleString('es-AR')}` 
+                                    : label.includes('%') ? `${(val * 100).toFixed(1)}%` : Math.round(val)}
+                            </span>
+                        </div>
+                    ))}
                 </div>
-            );
-        }
+            </div>
+        );
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<DashboardVentas />);
