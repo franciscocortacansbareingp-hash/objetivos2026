@@ -1,155 +1,154 @@
-import React, { useState, useEffect, useMemo } from 'react';
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Objetivos 2026</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div id="root"></div>
 
-const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSCmHe-75PjLOZxC8rj9ZiRx58SU0crBtp9FGokKFYUIN3FSONy7091EQPrVZWmHrkuXEuK-rg3uCx4/pub?output=csv";
+    <script type="text/babel">
+        const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSCmHe-75PjLOZxC8rj9ZiRx58SU0crBtp9FGokKFYUIN3FSONy7091EQPrVZWmHrkuXEuK-rg3uCx4/pub?output=csv";
 
-const DashboardVentas = () => {
-  const [rawData, setRawData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  
-  // Estados de Filtros
-  const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1); // Mes actual por defecto
-  const [turno, setTurno] = useState('TODOS'); // 'DIA', 'NOCHE' o 'TODOS'
-  const [diasHabiles, setDiasHabiles] = useState(22);
+        function DashboardVentas() {
+            const [rawData, setRawData] = React.useState([]);
+            const [loading, setLoading] = React.useState(true);
+            const [mesSeleccionado, setMesSeleccionado] = React.useState(new Date().getMonth() + 1);
+            const [turno, setTurno] = React.useState('TODOS');
+            const [diasHabiles, setDiasHabiles] = React.useState(22);
 
-  useEffect(() => {
-    fetch(CSV_URL)
-      .then(res => res.text())
-      .then(csv => {
-        const rows = csv.split('\n').map(row => row.split(','));
-        const headers = rows[0].map(h => h.trim());
-        const jsonData = rows.slice(1).map(row => {
-          let obj = {};
-          row.forEach((cell, i) => { obj[headers[i]] = cell?.trim(); });
-          return obj;
-        });
-        setRawData(jsonData);
-        setLoading(false);
-      });
-  }, []);
+            React.useEffect(() => {
+                fetch(CSV_URL)
+                    .then(res => res.text())
+                    .then(csv => {
+                        const rows = csv.split('\n').map(row => row.split(','));
+                        const headers = rows[0].map(h => h.trim());
+                        const jsonData = rows.slice(1).map(row => {
+                            let obj = {};
+                            row.forEach((cell, i) => { obj[headers[i]] = cell?.trim(); });
+                            return obj;
+                        });
+                        setRawData(jsonData);
+                        setLoading(false);
+                    });
+            }, []);
 
-  const calcularMetricas = (idVendedor) => {
-    // 1. Filtrar por Vendedor, Mes y Turno
-    const filtrado = rawData.filter(r => {
-      const matchVendedor = Number(r.Vendedor) === idVendedor;
-      
-      // Lógica de Mes (asumiendo que tu columna de fecha se llama "Fecha" o similar)
-      // Si no tienes columna de fecha, este filtro se puede omitir o ajustar
-      const fechaParts = r.Fecha ? r.Fecha.split('/') : [];
-      const matchMes = fechaParts.length > 1 ? Number(fechaParts[1]) === Number(mesSeleccionado) : true;
-      
-      // Lógica de Turno (ajusta 'HORARIO' por el nombre real de tu columna si es distinto)
-      const matchTurno = turno === 'TODOS' ? true : String(r.Turno).toUpperCase() === turno;
+            const calcularMetricas = (idVendedor) => {
+                const filtrado = rawData.filter(r => {
+                    const matchVendedor = Number(r.Vendedor) === idVendedor;
+                    const fechaParts = r.Fecha ? r.Fecha.split('/') : [];
+                    const matchMes = fechaParts.length > 1 ? Number(fechaParts[1]) === Number(mesSeleccionado) : true;
+                    const matchTurno = turno === 'TODOS' ? true : String(r.Turno || '').toUpperCase() === turno;
+                    return matchVendedor && matchMes && matchTurno;
+                });
 
-      return matchVendedor && matchMes && matchTurno;
-    });
+                const sum = (arr, col) => arr.reduce((acc, r) => acc + (Number(r[col]) || 0), 0);
+                const incluye = (arr, col, txt) => arr.filter(r => String(r[col] || '').toUpperCase().includes(txt.toUpperCase()));
+                const rangoEs = (arr, txt) => arr.filter(r => String(r.RANGO || '').toUpperCase() === txt.toUpperCase());
 
-    const sum = (arr, col) => arr.reduce((acc, r) => acc + (Number(r[col]) || 0), 0);
-    const incluye = (arr, col, txt) => arr.filter(r => String(r[col] || '').toUpperCase().includes(txt.toUpperCase()));
-    const rangoEs = (arr, txt) => arr.filter(r => String(r.RANGO || '').toUpperCase() === txt.toUpperCase());
+                const facturacion = sum(filtrado, 'ImporteML');
+                const nMostrador = sum(filtrado.filter(r => r['Llanta 17'] && ['SUB','VAN','H','SPIDER','T','V','W'].includes(String(r.RANGO).toUpperCase())), 'Cant');
+                const nOtras = sum(filtrado.filter(r => r['Llanta 17'] && String(r.RANGO).toUpperCase() === 'OTRAS MARCAS'), 'Cant');
+                const totalNeu = nMostrador + nOtras;
+                const alineacion = sum(incluye(filtrado, 'Descripción', 'ALINEACION'), 'Cant');
+                const balanceo = sum(incluye(filtrado, 'Descripción', 'BALANCEO'), 'Cant');
+                const valvulas = sum(incluye(filtrado, 'Descripción', 'VALVULA'), 'Cant');
+                const moFact = sum(incluye(filtrado, 'Descripción', 'MANO DE OBRA'), 'ImporteML');
+                const moCant = sum(incluye(filtrado, 'Descripción', 'MANO DE OBRA'), 'Cant');
+                const servFact = sum(rangoEs(filtrado, 'A_SERVICIO'), 'ImporteML');
+                const servCant = sum(rangoEs(filtrado, 'A_SERVICIO'), 'Cant');
+                const repChapa = sum(rangoEs(filtrado, 'REP CHAPA'), 'Cant');
+                const repAle = sum(rangoEs(filtrado, 'REP ALE'), 'Cant');
+                const accFact = sum(rangoEs(filtrado, 'ACCESORIOS'), 'ImporteML');
+                const accCant = sum(rangoEs(filtrado, 'ACCESORIOS'), 'Cant');
 
-    const facturacion = sum(filtrado, 'ImporteML');
-    const nMostrador = sum(filtrado.filter(r => r['Llanta 17'] && ['SUB','VAN','H','SPIDER','T','V','W'].includes(String(r.RANGO).toUpperCase())), 'Cant');
-    const nOtras = sum(filtrado.filter(r => r['Llanta 17'] && String(r.RANGO).toUpperCase() === 'OTRAS MARCAS'), 'Cant');
-    const totalNeu = nMostrador + nOtras;
-    
-    const alineacion = sum(incluye(filtrado, 'Descripción', 'ALINEACION'), 'Cant');
-    const balanceo = sum(incluye(filtrado, 'Descripción', 'BALANCEO'), 'Cant');
-    const valvulas = sum(incluye(filtrado, 'Descripción', 'VALVULA'), 'Cant');
-    
-    const moFact = sum(incluye(filtrado, 'Descripción', 'MANO DE OBRA'), 'ImporteML');
-    const moCant = sum(incluye(filtrado, 'Descripción', 'MANO DE OBRA'), 'Cant');
+                return {
+                    "Facturación Total": facturacion,
+                    "Total Neumáticos": totalNeu,
+                    "Alineaciones": alineacion,
+                    "Balanceos": balanceo,
+                    "Total Llantas": repChapa + repAle,
+                    "M.O. Ticket": moCant > 0 ? moFact / moCant : 0,
+                    "Servicio Ticket": servCant > 0 ? servFact / servCant : 0,
+                    "Fact. Diaria": diasHabiles > 0 ? facturacion / diasHabiles : 0,
+                    "% Valvulas/Neu": totalNeu > 0 ? (valvulas / totalNeu) : 0,
+                    "Baterías": sum(filtrado.filter(r => String(r.Descripción || '').toUpperCase().includes('BAT')), 'Cant'),
+                    "Matafuegos": sum(incluye(filtrado, 'Descripción', 'Matafuego'), 'Cant')
+                };
+            };
 
-    const servFact = sum(rangoEs(filtrado, 'A_SERVICIO'), 'ImporteML');
-    const servCant = sum(rangoEs(filtrado, 'A_SERVICIO'), 'Cant');
+            if (loading) return <div class="flex justify-center items-center h-screen font-sans">Conectando con base de datos de Google Sheets...</div>;
 
-    const repChapa = sum(rangoEs(filtrado, 'REP CHAPA'), 'Cant');
-    const repAle = sum(rangoEs(filtrado, 'REP ALE'), 'Cant');
+            const dataBeccar = calcularMetricas(88);
+            const dataSanMartin = calcularMetricas(99);
 
-    const accFact = sum(rangoEs(filtrado, 'ACCESORIOS'), 'ImporteML');
-    const accCant = sum(rangoEs(filtrado, 'ACCESORIOS'), 'Cant');
+            return (
+                <div class="p-6 max-w-6xl mx-auto font-sans">
+                    <h1 class="text-3xl font-bold text-center mb-8 text-slate-800 uppercase tracking-wider">Dashboard Operativo 2026</h1>
+                    
+                    <div class="bg-white p-6 rounded-xl shadow-md mb-8 flex flex-wrap gap-6 items-center justify-center border-l-4 border-blue-500">
+                        <div class="flex flex-col">
+                            <label class="text-xs font-bold text-gray-500 uppercase">Mes</label>
+                            <select class="border p-2 rounded-lg bg-gray-50 font-medium" value={mesSeleccionado} onChange={e => setMesSeleccionado(e.target.value)}>
+                                {['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((m, i) => (
+                                    <option key={m} value={i+1}>{m}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="text-xs font-bold text-gray-500 uppercase">Turno</label>
+                            <select class="border p-2 rounded-lg bg-gray-50 font-medium" value={turno} onChange={e => setTurno(e.target.value)}>
+                                <option value="TODOS">Todos</option>
+                                <option value="DIA">Día</option>
+                                <option value="NOCHE">Noche</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="text-xs font-bold text-gray-500 uppercase">Días Hábiles</label>
+                            <input class="border p-2 rounded-lg bg-gray-50 w-24 font-bold text-center" type="number" value={diasHabiles} onChange={e => setHabiles(e.target.value)} />
+                        </div>
+                    </div>
 
-    return {
-      "Facturación Total": facturacion,
-      "Neu. Mostrador": nMostrador,
-      "Neu. Otras": nOtras,
-      "Total Neumáticos": totalNeu,
-      "Alineaciones": alineacion,
-      "Balanceos": balanceo,
-      "M.O. Fact": moFact,
-      "Servicio Fact": servFact,
-      "Total Llantas": repChapa + repAle,
-      "Matafuegos": sum(incluye(filtrado, 'Descripción', 'Matafuego'), 'Cant'),
-      "Baterías": sum(filtrado.filter(r => r.Descripción?.toUpperCase().includes('BAT')), 'Cant'),
-      "M.O. Ticket": moCant > 0 ? moFact / moCant : 0,
-      "Servicio Ticket": servCant > 0 ? servFact / servCant : 0,
-      "Fact. Diaria": diasHabiles > 0 ? facturacion / diasHabiles : 0,
-      "% Valvulas/Neu": totalNeu > 0 ? (valvulas / totalNeu) : 0,
-    };
-  };
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <SucursalCard titulo="BECCAR (88)" datos={dataBeccar} color="blue" />
+                        <SucursalCard titulo="SAN MARTÍN (99)" datos={dataSanMartin} color="green" />
+                    </div>
+                </div>
+            );
+        }
 
-  if (loading) return <div style={{textAlign:'center', padding:'50px'}}>Conectando con base de datos...</div>;
+        const SucursalCard = ({ titulo, datos, color }) => {
+            const colorClass = color === 'blue' ? 'border-blue-600' : 'border-green-600';
+            const textClass = color === 'blue' ? 'text-blue-700' : 'text-green-700';
+            
+            return (
+                <div class={`bg-white rounded-2xl shadow-xl overflow-hidden border-t-8 ${colorClass}`}>
+                    <div class="bg-gray-50 px-6 py-4 border-b">
+                        <h2 class={`text-xl font-black ${textClass}`}>{titulo}</h2>
+                    </div>
+                    <div class="p-6 grid grid-cols-2 gap-y-4 gap-x-6">
+                        {Object.entries(datos).map(([label, val]) => (
+                            <div key={label} class="border-b border-gray-100 pb-2">
+                                <span class="text-[10px] text-gray-400 font-bold uppercase block leading-tight">{label}</span>
+                                <span class="text-lg font-bold text-slate-700">
+                                    {label.includes('Fact') || label.includes('Ticket') || label.includes('Diaria') 
+                                        ? `$${Math.round(val).toLocaleString()}` 
+                                        : label.includes('%') ? `${(val * 100).toFixed(1)}%` : val}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
 
-  const dataBeccar = calcularMetricas(88);
-  const dataSanMartin = calcularMetricas(99);
-
-  return (
-    <div style={{fontFamily:'sans-serif', padding:'20px', backgroundColor:'#f0f2f5'}}>
-      
-      {/* PANEL DE CONTROL */}
-      <div style={{backgroundColor:'white', padding:'20px', borderRadius:'10px', marginBottom:'20px', display:'flex', gap:'20px', alignItems:'center', flexWrap:'wrap', boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
-        <div>
-          <label style={{fontSize:'12px', fontWeight:'bold', display:'block'}}>MES</label>
-          <select value={mesSeleccionado} onChange={e => setMesSeleccionado(e.target.value)} style={{padding:'8px', borderRadius:'5px'}}>
-            {['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((m, i) => (
-              <option key={m} value={i+1}>{m}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label style={{fontSize:'12px', fontWeight:'bold', display:'block'}}>TURNO</label>
-          <select value={turno} onChange={e => setTurno(e.target.value)} style={{padding:'8px', borderRadius:'5px'}}>
-            <option value="TODOS">Todos</option>
-            <option value="DIA">Día</option>
-            <option value="NOCHE">Noche</option>
-          </select>
-        </div>
-
-        <div>
-          <label style={{fontSize:'12px', fontWeight:'bold', display:'block'}}>DÍAS HÁBILES</label>
-          <input 
-            type="number" 
-            value={diasHabiles} 
-            onChange={e => setDiasHabiles(e.target.value)}
-            style={{padding:'8px', borderRadius:'5px', width:'60px'}}
-          />
-        </div>
-      </div>
-
-      <div style={{display:'flex', gap:'20px', flexWrap:'wrap'}}>
-        <SucursalCard titulo="BECCAR" datos={dataBeccar} color="#1565c0" />
-        <SucursalCard titulo="SAN MARTÍN" datos={dataSanMartin} color="#2e7d32" />
-      </div>
-    </div>
-  );
-};
-
-const SucursalCard = ({ titulo, datos, color }) => (
-  <div style={{backgroundColor:'white', borderRadius:'12px', padding:'20px', flex:'1', minWidth:'350px', boxShadow:'0 4px 12px rgba(0,0,0,0.05)'}}>
-    <h2 style={{color: color, borderBottom:`2px solid ${color}`, paddingBottom:'10px'}}>{titulo}</h2>
-    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'15px'}}>
-      {Object.entries(datos).map(([label, val]) => (
-        <div key={label} style={{borderBottom:'1px solid #eee', paddingBottom:'5px'}}>
-          <span style={{fontSize:'11px', color:'#777', display:'block', fontWeight:'bold'}}>{label}</span>
-          <span style={{fontSize:'18px', fontWeight:'600'}}>
-            {label.includes('Fact') || label.includes('Ticket') || label.includes('Diaria') 
-              ? `$${Math.round(val).toLocaleString()}` 
-              : label.includes('%') ? `${(val * 100).toFixed(1)}%` : val}
-          </span>
-        </div>
-      ))}
-    </div>
-  </div>
-);
-
-export default DashboardVentas;
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<DashboardVentas />);
+    </script>
+</body>
+</html>
