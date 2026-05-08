@@ -57,106 +57,98 @@
 
                 const sum = (arr, col) => arr.reduce((acc, r) => acc + parseNum(r[col]), 0);
                 const incluye = (arr, col, txt) => arr.filter(r => String(r[col] || '').toUpperCase().includes(txt.toUpperCase()));
-                const rangoEs = (arr, col, txt) => arr.filter(r => String(r[col] || '').toUpperCase() === txt.toUpperCase());
 
-                // --- CALCULOS CORE ---
+                // --- LÓGICA DE NEGOCIO ---
                 const factTotal = sum(filtrado, 'Importe ML');
-                
-                // Servicios (Suman columna Cant si la palabra está en Descripción)
-                const alineaciones = sum(incluye(filtrado, 'Descripción', 'ALINEACION'), 'Cant');
-                const balanceos = sum(incluye(filtrado, 'Descripción', 'BALANCEO'), 'Cant');
-                const valvulas = sum(incluye(filtrado, 'Descripción', 'VALVULA'), 'Cant');
                 
                 // Neumáticos Cantidades
                 const nMostrador = sum(filtrado.filter(r => r['Llanta 17'] && ['SUB','VAN','H','SPIDER','T','V','W'].includes(String(r.RANGO || '').toUpperCase())), 'Cant');
                 const nOtras = sum(filtrado.filter(r => r['Llanta 17'] && String(r.RANGO || '').toUpperCase() === 'OTRAS MARCAS'), 'Cant');
                 const totalCantNeu = nMostrador + nOtras;
 
-                // Neumáticos Facturación
-                const factPirelli = sum(rangoEs(filtrado, 'Marca', 'PIRELLI'), 'Importe ML');
-                const factOtrasMarcas = sum(rangoEs(filtrado, 'RANGO', 'OTRAS MARCAS'), 'Importe ML');
+                // Facturación Neumáticos
+                const factPirelli = sum(filtrado.filter(r => String(r.Marca || '').toUpperCase() === 'PIRELLI'), 'Importe ML');
+                const factOtrasMarcas = sum(filtrado.filter(r => String(r.RANGO || '').toUpperCase() === 'OTRAS MARCAS'), 'Importe ML');
                 const factNeumaticosTotal = factPirelli + factOtrasMarcas;
 
-                // Mano de Obra y Servicios
-                const moFact = sum(incluye(filtrado, 'Descripción', 'MANO DE OBRA'), 'Importe ML');
-                const moCant = sum(incluye(filtrado, 'Descripción', 'MANO DE OBRA'), 'Cant');
-                const servFact = sum(rangoEs(filtrado, 'RANGO', 'A_SERVICIO'), 'Importe ML');
-                const servCant = sum(rangoEs(filtrado, 'RANGO', 'A_SERVICIO'), 'Cant');
-
-                // Llantas y Accesorios
-                const totalLlantas = sum(rangoEs(filtrado, 'RANGO', 'REP CHAPA'), 'Cant') + sum(rangoEs(filtrado, 'RANGO', 'REP ALE'), 'Cant');
-                const accFact = sum(rangoEs(filtrado, 'RANGO', 'ACCESORIOS'), 'Importe ML');
-                const accCant = sum(rangoEs(filtrado, 'RANGO', 'ACCESORIOS'), 'Cant');
+                // Servicios y Accesorios (Uso de incluye para evitar fallos por espacios)
+                const servRows = incluye(filtrado, 'RANGO', 'SERVICIO');
+                const accRows = incluye(filtrado, 'RANGO', 'ACCESORIO');
+                
+                const servFact = sum(servRows, 'Importe ML');
+                const accFact = sum(accRows, 'Importe ML');
+                const accCant = sum(accRows, 'Cant');
 
                 return {
                     general: {
                         "Facturación Total": factTotal,
                         "Facturación Diaria": diasHabiles > 0 ? factTotal / diasHabiles : 0,
-                        "Alineaciones": alineaciones,
-                        "Balanceos": balanceos,
-                        "Válvulas (Cant)": valvulas,
-                        "Total Llantas": totalLlantas,
-                        "M.O. Ticket Medio": moCant > 0 ? moFact / moCant : 0,
-                        "Servicio Ticket Medio": servCant > 0 ? servFact / servCant : 0,
+                        "Alineaciones": sum(incluye(filtrado, 'Descripción', 'ALINEACION'), 'Cant'),
+                        "Balanceos": sum(incluye(filtrado, 'Descripción', 'BALANCEO'), 'Cant'),
+                        "Válvulas (Cant)": sum(incluye(filtrado, 'Descripción', 'VALVULA'), 'Cant'),
+                        "Total Llantas": sum(incluye(filtrado, 'RANGO', 'REP '), 'Cant'),
+                        "Ticket Medio Servicio": sum(servRows, 'Cant') > 0 ? servFact / sum(servRows, 'Cant') : 0,
                         "% Servicio/Fact": factTotal > 0 ? servFact / factTotal : 0,
-                        "% Valvulas/Neu": totalCantNeu > 0 ? valvulas / totalCantNeu : 0,
                     },
                     neumaticos: {
+                        "Facturación Neumáticos": factNeumaticosTotal,
                         "Facturación Pirelli": factPirelli,
                         "Facturación Otras": factOtrasMarcas,
-                        "Facturación Neumáticos": factNeumaticosTotal,
+                        "Facturación Accesorios": accFact,
                         "Total Neumáticos (Cant)": totalCantNeu,
                         "Neumáticos Ticket Medio": totalCantNeu > 0 ? factNeumaticosTotal / totalCantNeu : 0,
-                        "Cant. Mostrador": nMostrador,
-                        "Cant. Otras": nOtras,
+                        "Accesorios (Cant)": accCant,
+                        "% Accesorios/Fact": factTotal > 0 ? accFact / factTotal : 0,
                         "Baterías": sum(incluye(filtrado, 'Descripción', 'BAT'), 'Cant'),
                         "Matafuegos": sum(incluye(filtrado, 'Descripción', 'Matafuego'), 'Cant'),
-                        "% Accesorios/Fact": factTotal > 0 ? accFact / factTotal : 0
                     }
                 };
             };
 
-            if (loading) return (
-                <div className={`h-screen flex justify-center items-center font-bold ${darkMode ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-800'}`}>
-                    Sincronizando con Google Sheets...
-                </div>
-            );
+            if (loading) return <div className="h-screen flex justify-center items-center bg-slate-900 text-white font-black text-xl">Sincronizando...</div>;
 
             const res88 = calcularMetricas(88);
             const res99 = calcularMetricas(99);
 
             return (
-                <div className={`min-h-screen p-4 transition-colors duration-300 ${darkMode ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+                <div className={`min-h-screen p-6 transition-colors duration-300 ${darkMode ? 'bg-black text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
                     <div className="max-w-6xl mx-auto">
                         
-                        {/* HEADER */}
-                        <header className={`flex flex-wrap justify-between items-center mb-6 p-6 rounded-3xl shadow-sm border transition-colors ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-                            <h1 className="text-xl font-black tracking-tighter">OPERATIVO 2026</h1>
-                            <div className="flex items-center gap-6">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mes</span>
-                                    <select className="bg-transparent font-bold text-lg outline-none text-blue-500 cursor-pointer" value={mesSeleccionado} onChange={e => setMesSeleccionado(Number(e.target.value))}>
+                        {/* HEADER REFORZADO MODO NOCHE */}
+                        <header className={`flex justify-between items-center mb-8 p-8 rounded-[2.5rem] border shadow-2xl ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+                            <h1 className="text-2xl font-black tracking-tighter">OPERATIVO 2026</h1>
+                            <div className="flex items-center gap-8">
+                                <div className="text-right">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Mes</p>
+                                    <select className="bg-transparent font-bold text-lg text-blue-500 outline-none cursor-pointer" value={mesSeleccionado} onChange={e => setMesSeleccionado(Number(e.target.value))}>
                                         {mesesNombres.map((m, i) => <option key={m} value={i+1} className="text-black">{m}</option>)}
                                     </select>
                                 </div>
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hábiles</span>
+                                <div className="text-right">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Hábiles</p>
                                     <input type="number" className="bg-transparent font-bold text-lg w-12 text-blue-500 outline-none" value={diasHabiles} onChange={e => setDiasHabiles(Number(e.target.value))} />
                                 </div>
-                                <button onClick={() => setDarkMode(!darkMode)} className={`p-3 rounded-2xl transition-all ${darkMode ? 'bg-slate-700 text-yellow-400 shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]' : 'bg-slate-100 text-slate-600 shadow-sm'}`}>
+                                <button onClick={() => setDarkMode(!darkMode)} className={`p-4 rounded-2xl transition-transform active:scale-90 ${darkMode ? 'bg-slate-800 text-yellow-400' : 'bg-slate-100 text-slate-600'}`}>
                                     {darkMode ? '☀️' : '🌙'}
                                 </button>
                             </div>
                         </header>
 
-                        {/* TABS */}
-                        <div className="flex gap-2 mb-8 bg-slate-200 dark:bg-slate-800 p-1.5 rounded-2xl w-fit mx-auto shadow-inner">
-                            <button onClick={() => setActiveTab('general')} className={`px-8 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'general' ? 'bg-white dark:bg-slate-700 shadow-md text-blue-600 dark:text-blue-400' : 'opacity-40 hover:opacity-70'}`}>Gestión General</button>
-                            <button onClick={() => setActiveTab('neumaticos')} className={`px-8 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'neumaticos' ? 'bg-white dark:bg-slate-700 shadow-md text-blue-600 dark:text-blue-400' : 'opacity-40 hover:opacity-70'}`}>Neumáticos</button>
+                        {/* TABS REFORZADOS */}
+                        <div className={`flex gap-3 mb-10 p-2 rounded-2xl w-fit mx-auto ${darkMode ? 'bg-slate-900' : 'bg-slate-200'}`}>
+                            {['general', 'neumaticos'].map(tab => (
+                                <button 
+                                    key={tab}
+                                    onClick={() => setActiveTab(tab)} 
+                                    className={`px-10 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-blue-600 text-white shadow-lg' : 'opacity-40 hover:opacity-100'}`}
+                                >
+                                    {tab === 'general' ? 'Gestión General' : 'Neumáticos'}
+                                </button>
+                            ))}
                         </div>
 
-                        {/* CARDS */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* TARJETAS */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                             <SucursalCard titulo="BECCAR (88)" datos={res88[activeTab]} color="blue" isDark={darkMode} />
                             <SucursalCard titulo="SAN MARTÍN (99)" datos={res99[activeTab]} color="emerald" isDark={darkMode} />
                         </div>
@@ -166,17 +158,17 @@
         }
 
         const SucursalCard = ({ titulo, datos, color, isDark }) => {
-            const accentBorder = color === 'blue' ? 'border-blue-500' : 'border-emerald-500';
-            const titleText = color === 'blue' ? 'text-blue-500' : 'text-emerald-500';
-
+            const accent = color === 'blue' ? 'text-blue-500' : 'text-emerald-500';
+            const border = color === 'blue' ? 'border-blue-500' : 'border-emerald-500';
+            
             return (
-                <div className={`rounded-[2.5rem] border-t-[10px] shadow-2xl p-8 transition-all ${isDark ? 'bg-slate-800 border-slate-700 shadow-none' : 'bg-white ' + accentBorder}`}>
-                    <h2 className={`text-2xl font-black mb-8 tracking-tight ${titleText}`}>{titulo}</h2>
-                    <div className="grid grid-cols-2 gap-x-10 gap-y-5">
+                <div className={`rounded-[3rem] p-10 border-t-[12px] shadow-2xl transition-all ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white ' + border}`}>
+                    <h2 className={`text-3xl font-black mb-10 tracking-tight ${accent}`}>{titulo}</h2>
+                    <div className="grid grid-cols-2 gap-x-12 gap-y-8">
                         {Object.entries(datos).map(([label, val]) => (
-                            <div key={label} className="border-b border-slate-100 dark:border-slate-700 pb-2 group">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1 tracking-tighter transition-colors group-hover:text-blue-400">{label}</span>
-                                <span className={`text-xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                            <div key={label} className="border-b border-slate-100 dark:border-slate-800 pb-3">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1 tracking-widest">{label}</span>
+                                <span className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
                                     {label.includes('Fact') || label.includes('Ticket') || label.includes('Diaria') 
                                         ? `$${Math.round(val).toLocaleString('es-AR')}` 
                                         : label.includes('%') ? `${(val * 100).toFixed(1)}%` : Math.round(val)}
